@@ -251,8 +251,6 @@ Details: **/docs/tokenomics.md**.
 - **Phase 2** — Marketplace publishing, payouts, ratings  
 - **Phase 3** — GPU acceleration, scaling, multi-region orchestration
 
-> Issues and feature requests are tracked in GitHub Issues.
-
 ---
 
 ## Contributing
