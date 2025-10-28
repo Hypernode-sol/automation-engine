@@ -1,275 +1,251 @@
 # Hypernode Automation Engine (HAE)
 
-Distributed automation runtime and SDK powering intelligent agent execution across the Hypernode network.
-
-[![CI](https://img.shields.io/github/actions/workflow/status/Hypernode-sol/automation-engine/ci.yml?branch=main)](https://github.com/Hypernode-sol/automation-engine/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
+> *“Automation, proof, and value — unified in a single computational fabric.”*
 
 ---
 
-## Table of Contents
-- [Overview](#overview)
-- [Key Features](#key-features)
-- [Architecture](#architecture)
-- [Repository Structure](#repository-structure)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Developing Agents](#developing-agents)
-- [APIs (Excerpt)](#apis-excerpt)
-- [Tokenomics (Summary)](#tokenomics-summary)
-- [Security & Isolation](#security--isolation)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact](#contact)
+## ⚙️ Overview
+
+The **Hypernode Automation Engine (HAE)** is the orchestration and execution layer of the **Hypernode Network**, a decentralized compute infrastructure that transforms computational work into **verifiable proofs** and **tokenized rewards**.
+
+It connects **nodes**, **agents**, and **validators** through the **x402 protocol**, ensuring that every execution is deterministic, auditable, and economically incentivized.
 
 ---
 
-## Overview
-
-**Hypernode Automation Engine (HAE)** turns any Hypernode into a host for intelligent **Operators (agents)** that can **perceive → reason → act**.  
-Nodes execute automation tasks, developers publish agents, and clients consume automation on demand — all integrated with the **x402** token incentive layer.
-
-Core goals:
-- Make distributed automation trivial to deploy across heterogeneous nodes.
-- Provide a clean SDK for building **Vision–Language–Action (VLA)** agents.
-- Ensure secure, auditable execution with rewards for successful tasks.
-
----
-
-## Key Features
-
-- **Node registration & capacity reporting** for distributed scheduling.
-- **Agent runtime** with a simple **perceive → reason → act** loop.
-- **SDK + template** for rapid agent development.
-- **Telemetry & logging** for observability.
-- **x402 incentive model** (operators and developers get paid per execution).
-- **CI workflow** out-of-the-box with GitHub Actions.
-
----
-
-## Architecture
-
-HAE follows a three-layer model:
-
-1. **Machine Layer** — physical/virtual nodes (CPU/GPU, RAM, storage).  
-2. **System Layer** — runtime & orchestration (containers/VMs, I/O abstraction, telemetry).  
-3. **Intelligence Layer** — agent logic with VLA models or custom rules.
-
-**High-level diagram:**
+## 🧩 Architecture Overview
 
 ```
-+-----------------------------+
-| Client / Marketplace        |
-+-----------+-----------------+
-            |
-            v
-+-----------+-----------------+
-| Orchestrator Service        |
-| - Task scheduler            |
-| - Node registry             |
-| - Telemetry collector       |
-+-----------+-----------------+
-            |
-            v
-+-----------+-----------------+
-| Node Runtime (Machine/System)|
-| - Agent container            |
-| - SDK                        |
-| - Logs & status              |
-+-----------+-----------------+
-            |
-            v
-+-----------+-----------------+
-| Agent Logic (Intelligence)  |
-| - Perceive()                |
-| - Reason()                  |
-| - Act()                     |
-+-----------------------------+
+┌────────────────────────────────────────────────────┐
+│                    USER / CLIENT                   │
+│────────────────────────────────────────────────────│
+│     API Gateway / Orchestrator / Validator          │
+└───────────────────────────┬─────────────────────────┘
+                            │
+                            ▼
+┌────────────────────────────────────────────────────┐
+│                NODE RUNTIME LAYER (HAE)            │
+│────────────────────────────────────────────────────│
+│  • Node Connector (heartbeat, registration)        │
+│  • Agent Sandbox Execution                         │
+│  • Telemetry + Proof Generation (PoE)              │
+│  • x402 Protocol Integration                       │
+└───────────────────────────┬─────────────────────────┘
+                            │
+                            ▼
+┌────────────────────────────────────────────────────┐
+│                   AGENT SDK LAYER                  │
+│────────────────────────────────────────────────────│
+│  • Agent API (Python / Rust)                       │
+│  • Perception → Reasoning → Action cycle           │
+│  • Deterministic task handling                     │
+│  • Points emission                                 │
+└────────────────────────────────────────────────────┘
 ```
-
-For detailed docs, see **/docs/architecture.md**.
 
 ---
 
-## Repository Structure
+## 🧰 Features
+
+- **Proof-of-Execution (PoE):** cryptographic verification of every task.  
+- **Node Runtime:** containerized agents running with full sandbox isolation.  
+- **Points → $HYPER Conversion:** rewards governed by x402 epochs.  
+- **Telemetry Engine:** transparent performance logging and auditing.  
+- **Cross-language SDK:** agents in Python, Node, or Rust.  
+
+---
+
+## 📁 Repository Structure
 
 ```
 automation-engine/
-├─ README.md
-├─ LICENSE
-├─ CONTRIBUTING.md
-├─ docs/
-│  ├─ installation.md
-│  ├─ agent_development.md
-│  ├─ tokenomics.md
-│  └─ architecture.md
-├─ api/
-│  └─ specification.md
-├─ sdk/
-│  └─ template_agent/
-│     ├─ agent.py
-│     ├─ requirements.txt
-│     ├─ README.md
-│     └─ tests/
-│        └─ test_agent.py
-├─ node_runtime/
-│  ├─ installation_script.sh
-│  ├─ connector.js
-│  └─ config/
-│     └─ hypernode_node.yaml
-└─ .github/
-   └─ workflows/
-      └─ ci.yml
+│
+├── core/                     # Core orchestration logic
+├── node_runtime/              # Node connector, sandbox, and telemetry
+├── agent-sdk/                 # SDK for agent development
+├── api/                       # REST & JSON-RPC specifications
+├── docs/                      # Technical documentation
+├── tests/                     # Unit and integration tests
+└── .github/workflows/         # CI/CD pipelines
 ```
 
 ---
 
-## Installation
+## 🧰 Requirements
 
-> For full instructions, read **/docs/installation.md**.
+- Docker ≥ 25.0  
+- Node.js ≥ 18  
+- Python ≥ 3.10  
+- Rust ≥ 1.77  
+- Solana CLI (for reward contract testing)  
+- Linux (Ubuntu/Debian recommended)
 
-**Prerequisites**
-- Linux host (Ubuntu 22.04+ recommended), Docker, Python 3.10+
-- Optional GPU with CUDA for accelerated agents
-- Stable Internet connection
+---
 
-**Steps (summary)**
+## 🚀 Installation
 
 ```bash
 git clone https://github.com/Hypernode-sol/automation-engine.git
-cd automation-engine/node_runtime
-
-chmod +x installation_script.sh
-./installation_script.sh
-
-# Edit node configuration (example)
-sed -i 's/example-node/my-node-001/' config/hypernode_node.yaml
+cd automation-engine
+bash node_runtime/installation_script.sh
 ```
 
-Start the connector (example):
+This will:
+- install dependencies  
+- create `node_runtime/config/hypernode_node.yaml`  
+- install npm and Python packages  
+- prepare `.env` for Hypernode API  
 
-```bash
-# NodeJS 18+ recommended
-node connector.js
+---
+
+## 🖥️ Running the Node Runtime
+
+```
+cd node_runtime
+npm start
 ```
 
-Verify node status (example endpoint):
+The runtime:
+1. Registers the node.  
+2. Sends heartbeats every 60 seconds.  
+3. Executes agent workloads securely.  
+4. Submits telemetry proofs to the orchestrator.
 
-```bash
-curl "https://api.hypernode.org/nodes/status?node_id=my-node-001"
+### Example Data Flow
+```
+┌────────────┐    Register   ┌──────────────┐
+│ Node Agent │──────────────▶│ Orchestrator │
+└────────────┘               └──────┬───────┘
+        ▲                           │
+        │     Proof of Execution    │
+        └───────────────────────────┘
 ```
 
 ---
 
-## Quick Start
+## 🧠 Agent Development (SDK)
 
-Run the template agent:
+Agents follow a three-step cognitive cycle: **Perceive → Reason → Act**
 
-```bash
-cd sdk/template_agent
-pip install -r requirements.txt
-python agent.py --instruction "perform benchmark on idle GPU"
-```
-
-Run tests:
-
-```bash
-pytest
-```
-
----
-
-## Developing Agents
-
-> See **/docs/agent_development.md** for a complete guide.
-
-**Pattern**: implement three methods in `agent.py`:
-- `perceive()` — gather environment state (metrics, screenshots, etc.).
-- `reason(state, instruction)` — decide an action plan.
-- `act(action_plan)` — execute the selected action.
-
-Minimal snippet:
-
+### Example Agent
 ```python
 from agent import HypernodeAgent
-agent = HypernodeAgent({"node_id": "dev-node"})
-agent.run("run health check")
+from telemetry import get_metrics
+
+class ExampleAgent(HypernodeAgent):
+    def perceive(self):
+        return get_metrics()
+    def reason(self, data):
+        return "run_task" if data["gpu"] < 70 else "idle"
+    def act(self, action):
+        if action == "run_task":
+            self.execute_task("hypernode/benchmark:latest")
+
+if __name__ == "__main__":
+    ExampleAgent().run_cycle()
 ```
 
-Publish flow (suggested):
-1. Fork the repo and create your agent under `sdk/your_agent/`.
-2. Add tests and update `requirements.txt`.
-3. Open a PR to `dev` branch for review.
-4. Upon approval, the agent becomes available to the internal marketplace.
-
----
-
-## APIs (Excerpt)
-
-> Full contract: **/api/specification.md**
-
-- `POST /nodes/register` — register node with capacity metadata.  
-- `GET /nodes/list` — list active nodes.  
-- `POST /agents/publish` — publish a new agent.  
-- `GET /agents/list` — list available agents.  
-- `POST /tasks/create` — request task execution.  
-- `GET /tasks/status/{id}` — query task status.  
-- `POST /payments/emit` — emit token rewards after completion.
-
-All requests require:
+### Execution Cycle Diagram
 ```
-Authorization: Bearer <api_key>
+┌────────────┐   metrics   ┌──────────────┐
+│ Perceive() │────────────▶│ Reason()     │
+└──────┬─────┘             └──────┬──────┘
+       │ decision                │ action
+       ▼                         ▼
+   ┌───────────────┐     ┌─────────────────┐
+   │  Act() Task   │────▶│ Telemetry Proof │
+   └───────────────┘     └─────────────────┘
 ```
 
 ---
 
-## Tokenomics (Summary)
+## 🔐 Security and Isolation
 
-- **x402** is the incentive token for the automation network.  
-- **Node operators** earn per successful task; **agent developers** earn from usage/licensing.  
-- Example split (configurable): 70% operator / 30% developer (+ optional protocol fee).  
-- Telemetry-confirmed success triggers payouts.
+- Sandbox containers (Docker, seccomp, read-only FS)  
+- Deterministic teardown post-execution  
+- ECDSA + SHA-256 signatures on all proofs  
+- Encrypted communication via TLS 1.3  
+- Automated quarantine for inconsistent telemetry  
 
-Details: **/docs/tokenomics.md**.
-
----
-
-## Security & Isolation
-
-- Agents run in isolated containers/VMs (least-privilege).  
-- Telemetry and logs are collected for auditing.  
-- Authentication via API keys (`Bearer`).  
-- Resource quotas and safeguards to prevent abuse.
+More: [Security and Isolation](https://github.com/Hypernode-sol/automation-engine/wiki/Security-and-Isolation)
 
 ---
 
-## Roadmap
+## 📡 API Reference
 
-- **Phase 0** — Base repo, template agent, APIs, docs ✓  
-- **Phase 1** — Node registration, simple execution, basic dashboard  
-- **Phase 2** — Marketplace publishing, payouts, ratings  
-- **Phase 3** — GPU acceleration, scaling, multi-region orchestration
+Full API spec: [`api/specification.md`](api/specification.md)
 
----
+| Category | Endpoint | Description |
+|-----------|-----------|-------------|
+| **Nodes** | `/nodes/register` | Register and configure nodes |
+| **Heartbeat** | `/nodes/heartbeat` | Maintain uptime |
+| **Agents** | `/agents/publish` | Publish agent metadata |
+| **Tasks** | `/tasks/create` | Queue workloads |
+| **Rewards** | `/payments/emit` | Submit proof and receive points |
 
-## Contributing
-
-We welcome contributions!  
-See **/CONTRIBUTING.md** and open PRs against the `dev` branch.  
-CI via GitHub Actions (`.github/workflows/ci.yml`).
-
----
-
-## License
-
-MIT — see **/LICENSE**.
+Each proof is validated and recorded via the **x402 protocol**.
 
 ---
 
-## Contact
+## 🧪 Continuous Integration
 
-- Email: contact@hypernodesolana.org  
-- Twitter: https://x.com/hypernode_sol
+Pipeline (`.github/workflows/ci.yml`) automatically:
+- Lints and tests Python and Node code  
+- Validates directory and config structure  
+- Ensures deterministic build outputs  
 
-© 2025 Hypernode Solana — All rights reserved.
+Run locally:
+```bash
+make test
+```
+
+---
+
+## 💰 Economic Layer
+
+- Nodes earn **points** through valid computations.  
+- Points are periodically converted into **$HYPER** tokens.  
+- The **x402 protocol** manages verification and conversion fairness.  
+- Misbehavior reduces reputation and future rewards.
+
+```
+Computation → Proof → Points → $HYPER
+```
+
+Details: [Tokenomics and Rewards](https://github.com/Hypernode-sol/automation-engine/wiki/Tokenomics-and-Rewards)
+
+---
+
+## 🧭 Roadmap Summary
+
+| Phase | Goal | Status |
+|-------|------|--------|
+| **0** | Node runtime, SDK, API layer | ✅ Done |
+| **1** | Multi-node orchestration, telemetry dashboard | 🚧 In progress |
+| **2** | Agent marketplace + economic rewards | 🔜 Planned |
+| **3** | AI-assisted orchestration layer | 🔜 Planned |
+
+See full details: [Roadmap and Future Work](https://github.com/Hypernode-sol/automation-engine/wiki/Roadmap-and-Future-Work)
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository  
+2. Create a branch  
+3. Commit using **Conventional Commits**  
+4. Open a pull request to `develop`  
+5. CI validation must pass before merge  
+
+Contributors earn **points → $HYPER** through accepted merges and verified contributions.
+
+---
+
+## 📜 License
+
+Licensed under the **MIT License**.  
+See [`LICENSE`](LICENSE).
+
+---
+
+> *“In Hypernode, computation is labor, proof is trust, and trust becomes value.”*
+
