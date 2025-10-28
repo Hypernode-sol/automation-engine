@@ -1,0 +1,17 @@
+{
+  "defaultAction": "SCMP_ACT_ERRNO",
+  "archMap": [
+    { "architecture": "SCMP_ARCH_X86_64", "subArchitectures": [] },
+    { "architecture": "SCMP_ARCH_AARCH64", "subArchitectures": [] }
+  ],
+  "syscalls": [
+    { "names": ["read", "write", "exit", "futex", "nanosleep"], "action": "SCMP_ACT_ALLOW" },
+    { "names": ["rt_sigaction", "rt_sigprocmask", "sigaltstack"], "action": "SCMP_ACT_ALLOW" },
+    { "names": ["brk", "mmap", "mprotect", "munmap"], "action": "SCMP_ACT_ALLOW" },
+    { "names": ["clone3", "clone", "execve"], "action": "SCMP_ACT_ALLOW", "args": [] },
+    { "names": ["getpid", "getppid", "gettid"], "action": "SCMP_ACT_ALLOW" },
+    { "names": ["openat", "close", "stat", "fstat", "lstat"], "action": "SCMP_ACT_ALLOW" },
+    { "names": ["arch_prctl", "prlimit64"], "action": "SCMP_ACT_ALLOW" },
+    { "names": ["socket", "connect", "sendto", "recvfrom"], "action": "SCMP_ACT_ALLOW" }
+  ]
+}
