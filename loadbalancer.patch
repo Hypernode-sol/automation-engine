@@ -1,0 +1,161 @@
+From dad9ad93c9882903bc25afd25c6cc0aa9808c8af Mon Sep 17 00:00:00 2001
+From: Hypernode Developer <hypernode-sol@users.noreply.github.com>
+Date: Fri, 31 Oct 2025 21:30:57 +0000
+Subject: [PATCH] Fix compilation errors and thread-safety issues
+
+- Add lastHeartbeat field and methods to Node class
+- Add synchronized methods for thread-safe capacity management
+- Add validation to prevent negative capacity in assignTask
+- Replace HashMap with ConcurrentHashMap in NodeMonitor
+- Replace ArrayList with CopyOnWriteArrayList in HealthCheckService
+- Fix isNodeHealthy logic to correctly calculate time since last heartbeat
+- Fix updateNodeCapacity to properly update capacity instead of using assignTask hack
+- Update main method timestamps to use relative time for accurate testing
+
+These changes resolve compilation errors and improve concurrent access safety.
+---
+ HealthCheckService.java | 23 ++++++++++++++---------
+ LoadBalancer.java       | 17 +++++++++++++++--
+ NodeMonitor.java        | 10 +++++++---
+ 3 files changed, 36 insertions(+), 14 deletions(-)
+
+diff --git a/HealthCheckService.java b/HealthCheckService.java
+index 6a17fad..c06aed0 100644
+--- a/HealthCheckService.java
++++ b/HealthCheckService.java
+@@ -2,6 +2,8 @@
+ package com.hypernode.loadbalancer;
+ 
+ import java.util.*;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.CopyOnWriteArrayList;
+ 
+ /**
+  * HealthCheckService performs periodic health checks on nodes in the hypernode network.
+@@ -15,7 +17,7 @@ public class HealthCheckService {
+     public HealthCheckService(Map<String, Node> nodes, int checkInterval) {
+         this.nodes = nodes;
+         this.checkInterval = checkInterval;
+-        this.unhealthyNodes = new ArrayList<>();
++        this.unhealthyNodes = new CopyOnWriteArrayList<>();
+     }
+ 
+     /**
+@@ -40,13 +42,15 @@ public class HealthCheckService {
+ 
+     /**
+      * Checks whether a node is healthy.
+-     * 
++     *
+      * @param node The node to check.
+      * @return True if the node is healthy; false otherwise.
+      */
+     private boolean isNodeHealthy(Node node) {
+-        // Simulate a health check by validating node capacity and response time.
+-        return node.getAvailableCapacity() > 0 && node.getLastHeartbeat() <= checkInterval;
++        // Check if node has capacity and heartbeat is recent
++        long currentTime = System.currentTimeMillis();
++        long timeSinceLastHeartbeat = currentTime - node.getLastHeartbeat();
++        return node.getAvailableCapacity() > 0 && timeSinceLastHeartbeat <= checkInterval;
+     }
+ 
+     /**
+@@ -60,15 +64,16 @@ public class HealthCheckService {
+ 
+     public static void main(String[] args) {
+         // Example usage
+-        Map<String, Node> nodes = new HashMap<>();
++        Map<String, Node> nodes = new ConcurrentHashMap<>();
+         nodes.put("Node1", new Node("Node1", 100));
+         nodes.put("Node2", new Node("Node2", 0)); // Simulate unhealthy node
+         nodes.put("Node3", new Node("Node3", 50));
+ 
+-        // Set heartbeat times to simulate node states
+-        nodes.get("Node1").setLastHeartbeat(2000);
+-        nodes.get("Node2").setLastHeartbeat(6000);
+-        nodes.get("Node3").setLastHeartbeat(3000);
++        // Set heartbeat times to simulate node states (old timestamps)
++        long currentTime = System.currentTimeMillis();
++        nodes.get("Node1").setLastHeartbeat(currentTime - 2000);  // 2s ago
++        nodes.get("Node2").setLastHeartbeat(currentTime - 6000);  // 6s ago (unhealthy)
++        nodes.get("Node3").setLastHeartbeat(currentTime - 3000);  // 3s ago
+ 
+         HealthCheckService healthCheckService = new HealthCheckService(nodes, 5000);
+         healthCheckService.performHealthChecks();
+diff --git a/LoadBalancer.java b/LoadBalancer.java
+index b0cb889..d0b00f9 100644
+--- a/LoadBalancer.java
++++ b/LoadBalancer.java
+@@ -69,21 +69,34 @@ class Task {
+ class Node {
+     private final String id;
+     private int availableCapacity;
++    private long lastHeartbeat;
+ 
+     public Node(String id, int availableCapacity) {
+         this.id = id;
+         this.availableCapacity = availableCapacity;
++        this.lastHeartbeat = System.currentTimeMillis();
+     }
+ 
+     public String getId() {
+         return id;
+     }
+ 
+-    public int getAvailableCapacity() {
++    public synchronized int getAvailableCapacity() {
+         return availableCapacity;
+     }
+ 
+-    public void assignTask(Task task) {
++    public synchronized void assignTask(Task task) {
++        if (task.getRequiredCapacity() > availableCapacity) {
++            throw new IllegalStateException("Insufficient capacity to assign task");
++        }
+         this.availableCapacity -= task.getRequiredCapacity();
+     }
++
++    public long getLastHeartbeat() {
++        return lastHeartbeat;
++    }
++
++    public void setLastHeartbeat(long timestamp) {
++        this.lastHeartbeat = timestamp;
++    }
+ }
+diff --git a/NodeMonitor.java b/NodeMonitor.java
+index f1b58b3..a8572a6 100644
+--- a/NodeMonitor.java
++++ b/NodeMonitor.java
+@@ -2,13 +2,14 @@
+ package com.hypernode.loadbalancer;
+ 
+ import java.util.*;
++import java.util.concurrent.ConcurrentHashMap;
+ 
+ public class NodeMonitor {
+ 
+-    private final Map<String, Node> nodes = new HashMap<>();
++    private final Map<String, Node> nodes = new ConcurrentHashMap<>();
+ 
+     public NodeMonitor() {
+-        // Initialize with some example nodes
++        // Initialize with example nodes (remove in production)
+         nodes.put("Node1", new Node("Node1", 100));
+         nodes.put("Node2", new Node("Node2", 150));
+         nodes.put("Node3", new Node("Node3", 200));
+@@ -38,7 +39,10 @@ public class NodeMonitor {
+     public void updateNodeCapacity(String nodeId, int newCapacity) {
+         Node node = nodes.get(nodeId);
+         if (node != null) {
+-            node.assignTask(new Task("Capacity Update", node.getAvailableCapacity() - newCapacity));
++            // Create new node with updated capacity instead of using assignTask hack
++            Node updatedNode = new Node(nodeId, newCapacity);
++            updatedNode.setLastHeartbeat(node.getLastHeartbeat());
++            nodes.put(nodeId, updatedNode);
+             System.out.printf("Node %s capacity updated to %d.%n", nodeId, newCapacity);
+         } else {
+             System.err.printf("Node %s not found.%n", nodeId);
+-- 
+2.43.0
+

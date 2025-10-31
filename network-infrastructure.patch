@@ -1,0 +1,318 @@
+From d7e57a94a916196ac271e100e49bd638a9c51fdc Mon Sep 17 00:00:00 2001
+From: Hypernode Developer <hypernode-sol@users.noreply.github.com>
+Date: Fri, 31 Oct 2025 21:29:57 +0000
+Subject: [PATCH] Fix critical thread-safety and resource leak issues
+
+- Replace HashMap with ConcurrentHashMap in NetworkServer
+- Integrate MessageHandler and HeartbeatMonitor properly
+- Add input validation for JSON messages and node registration
+- Fix resource leak: nodes now removed from map on disconnect
+- Fix thread leak in NetworkNode heartbeat mechanism
+- Add proper shutdown handling with volatile flag
+- Use ProtocolConstants.HEARTBEAT_INTERVAL instead of hardcoded value
+- Add encapsulation to NodeInfo class with getters/setters
+- Add removeNode and checkAndRemoveInactiveNodes methods to HeartbeatMonitor
+- Validate all inputs (nodeId, ipAddress, capacity)
+
+These changes address memory leaks, race conditions, and improve overall system stability.
+---
+ HeartbeatMonitor.java | 24 +++++++++++++++++++-
+ NetworkNode.java      | 52 ++++++++++++++++++++++++++++++++++---------
+ NetworkServer.java    | 46 ++++++++++++++++++++++++++++++++------
+ NodeRegistry.java     | 34 +++++++++++++++++++++++++---
+ 4 files changed, 134 insertions(+), 22 deletions(-)
+
+diff --git a/HeartbeatMonitor.java b/HeartbeatMonitor.java
+index 43da21c..a2a2da9 100644
+--- a/HeartbeatMonitor.java
++++ b/HeartbeatMonitor.java
+@@ -27,7 +27,7 @@ public class HeartbeatMonitor {
+ 
+     /**
+      * Checks for nodes that have timed out and returns their IDs.
+-     * 
++     *
+      * @return List of inactive node IDs.
+      */
+     public List<String> checkForInactiveNodes() {
+@@ -42,4 +42,26 @@ public class HeartbeatMonitor {
+ 
+         return inactiveNodes;
+     }
++
++    /**
++     * Removes a node from heartbeat monitoring.
++     *
++     * @param nodeId The ID of the node to remove.
++     */
++    public void removeNode(String nodeId) {
++        nodeLastSeen.remove(nodeId);
++    }
++
++    /**
++     * Checks for inactive nodes and automatically removes them.
++     *
++     * @return List of removed inactive node IDs.
++     */
++    public List<String> checkAndRemoveInactiveNodes() {
++        List<String> inactiveNodes = checkForInactiveNodes();
++        for (String nodeId : inactiveNodes) {
++            nodeLastSeen.remove(nodeId);
++        }
++        return inactiveNodes;
++    }
+ }
+diff --git a/NetworkNode.java b/NetworkNode.java
+index c1e5ff8..ce85b6b 100644
+--- a/NetworkNode.java
++++ b/NetworkNode.java
+@@ -12,49 +12,79 @@ public class NetworkNode {
+     private String nodeId;
+     private String serverHost;
+     private int serverPort;
++    private volatile boolean running;
++    private Thread heartbeatThread;
+ 
+     public NetworkNode(String nodeId, String serverHost, int serverPort) {
+         this.nodeId = nodeId;
+         this.serverHost = serverHost;
+         this.serverPort = serverPort;
++        this.running = false;
+     }
+ 
+     public void start() {
+-        try (Socket socket = new Socket(serverHost, serverPort);
+-             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+-             PrintWriter out = new PrintWriter(socket.getOutputStream(), true)) {
++        Socket socket = null;
++        BufferedReader in = null;
++        PrintWriter out = null;
++
++        try {
++            socket = new Socket(serverHost, serverPort);
++            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
++            out = new PrintWriter(socket.getOutputStream(), true);
++            running = true;
+ 
+             System.out.println("[INFO] Connected to NetworkServer at " + serverHost + ":" + serverPort);
+ 
+-            // Send handshake ...
++            // Send handshake
+             JSONObject handshake = new JSONObject();
+             handshake.put("nodeId", nodeId);
+             out.println(handshake.toString());
+ 
+-            // Example: Send periodic heartbeats
+-            new Thread(() -> {
++            // Start heartbeat thread with proper reference
++            final PrintWriter finalOut = out;
++            heartbeatThread = new Thread(() -> {
+                 try {
+-                    while (true) {
++                    while (running) {
+                         JSONObject heartbeat = new JSONObject();
+                         heartbeat.put("type", "HEARTBEAT");
+                         heartbeat.put("timestamp", System.currentTimeMillis());
+-                        out.println(heartbeat.toString());
++                        finalOut.println(heartbeat.toString());
+ 
+-                        Thread.sleep(5000); // Heartbeat interval
++                        Thread.sleep(ProtocolConstants.HEARTBEAT_INTERVAL);
+                     }
++                } catch (InterruptedException e) {
++                    Thread.currentThread().interrupt();
+                 } catch (Exception e) {
+                     System.err.println("[ERROR] Heartbeat error: " + e.getMessage());
+                 }
+-            }).start();
++            });
++            heartbeatThread.setDaemon(true);
++            heartbeatThread.start();
+ 
+             // Listen for messages from the server
+             String message;
+-            while ((message = in.readLine()) != null) {
++            while (running && (message = in.readLine()) != null) {
+                 System.out.println("[MESSAGE] From Server: " + message);
+             }
+ 
+         } catch (IOException e) {
+             System.err.println("[ERROR] Node error: " + e.getMessage());
++        } finally {
++            stop();
++            try {
++                if (in != null) in.close();
++                if (out != null) out.close();
++                if (socket != null) socket.close();
++            } catch (IOException e) {
++                System.err.println("[ERROR] Error closing resources: " + e.getMessage());
++            }
++        }
++    }
++
++    public void stop() {
++        running = false;
++        if (heartbeatThread != null && heartbeatThread.isAlive()) {
++            heartbeatThread.interrupt();
+         }
+     }
+ 
+diff --git a/NetworkServer.java b/NetworkServer.java
+index 057565a..9ba2f71 100644
+--- a/NetworkServer.java
++++ b/NetworkServer.java
+@@ -3,6 +3,7 @@ package com.hypernode.network;
+ import java.io.*;
+ import java.net.*;
+ import java.util.*;
++import java.util.concurrent.ConcurrentHashMap;
+ import org.json.JSONObject;
+ 
+ /**
+@@ -12,10 +13,14 @@ public class NetworkServer {
+ 
+     private int port;
+     private Map<String, NodeConnection> connectedNodes;
++    private MessageHandler messageHandler;
++    private HeartbeatMonitor heartbeatMonitor;
+ 
+     public NetworkServer(int port) {
+         this.port = port;
+-        this.connectedNodes = new HashMap<>();
++        this.connectedNodes = new ConcurrentHashMap<>();
++        this.messageHandler = new MessageHandler();
++        this.heartbeatMonitor = new HeartbeatMonitor(ProtocolConstants.NODE_TIMEOUT_THRESHOLD);
+     }
+ 
+     public void start() {
+@@ -45,16 +50,28 @@ public class NetworkServer {
+ 
+         @Override
+         public void run() {
++            String nodeId = null;
+             try {
+                 in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                 out = new PrintWriter(socket.getOutputStream(), true);
+ 
+-                // Authenticate node
++                // Authenticate node with validation
+                 String handshake = in.readLine();
++                if (handshake == null || handshake.trim().isEmpty()) {
++                    System.err.println("[ERROR] Empty handshake received");
++                    return;
++                }
++
+                 JSONObject handshakeJson = new JSONObject(handshake);
+-                String nodeId = handshakeJson.getString("nodeId");
++                nodeId = handshakeJson.optString("nodeId", null);
++
++                if (nodeId == null || nodeId.trim().isEmpty()) {
++                    System.err.println("[ERROR] Invalid nodeId in handshake");
++                    return;
++                }
+ 
+                 connectedNodes.put(nodeId, this);
++                heartbeatMonitor.updateHeartbeat(nodeId);
+                 System.out.println("[INFO] Node connected: " + nodeId);
+ 
+                 // Listen for messages from the node
+@@ -65,18 +82,33 @@ public class NetworkServer {
+             } catch (Exception e) {
+                 System.err.println("[ERROR] Node connection error: " + e.getMessage());
+             } finally {
+-                closeConnection();
++                closeConnection(nodeId);
+             }
+         }
+ 
+         private void handleMessage(String nodeId, String message) {
+-            System.out.println("[MESSAGE] From Node " + nodeId + ": " + message);
+-            // TODO: Process messages (e.g., task reports, heartbeats)
++            try {
++                JSONObject jsonMessage = new JSONObject(message);
++                String messageType = jsonMessage.optString("type", "UNKNOWN");
++
++                // Update heartbeat for any message received
++                heartbeatMonitor.updateHeartbeat(nodeId);
++
++                // Delegate to message handler
++                messageHandler.handleMessage(nodeId, message);
++            } catch (Exception e) {
++                System.err.println("[ERROR] Failed to handle message from node " + nodeId + ": " + e.getMessage());
++            }
+         }
+ 
+-        private void closeConnection() {
++        private void closeConnection(String nodeId) {
+             try {
+                 socket.close();
++                // Remove node from connected nodes map to prevent memory leak
++                if (nodeId != null) {
++                    connectedNodes.remove(nodeId);
++                    System.out.println("[INFO] Node disconnected and removed: " + nodeId);
++                }
+             } catch (IOException e) {
+                 System.err.println("[ERROR] Closing connection: " + e.getMessage());
+             }
+diff --git a/NodeRegistry.java b/NodeRegistry.java
+index 8d7f9a8..33d0227 100644
+--- a/NodeRegistry.java
++++ b/NodeRegistry.java
+@@ -15,6 +15,15 @@ public class NodeRegistry {
+     }
+ 
+     public void registerNode(String nodeId, String ipAddress, int capacity) {
++        if (nodeId == null || nodeId.trim().isEmpty()) {
++            throw new IllegalArgumentException("Node ID cannot be null or empty");
++        }
++        if (ipAddress == null || ipAddress.trim().isEmpty()) {
++            throw new IllegalArgumentException("IP address cannot be null or empty");
++        }
++        if (capacity < 0) {
++            throw new IllegalArgumentException("Capacity cannot be negative");
++        }
+         nodes.put(nodeId, new NodeInfo(nodeId, ipAddress, capacity));
+         System.out.println("[INFO] Node registered: " + nodeId);
+     }
+@@ -33,9 +42,9 @@ public class NodeRegistry {
+     }
+ 
+     public static class NodeInfo {
+-        public String nodeId;
+-        public String ipAddress;
+-        public int capacity;
++        private final String nodeId;
++        private final String ipAddress;
++        private int capacity;
+ 
+         public NodeInfo(String nodeId, String ipAddress, int capacity) {
+             this.nodeId = nodeId;
+@@ -43,6 +52,25 @@ public class NodeRegistry {
+             this.capacity = capacity;
+         }
+ 
++        public String getNodeId() {
++            return nodeId;
++        }
++
++        public String getIpAddress() {
++            return ipAddress;
++        }
++
++        public int getCapacity() {
++            return capacity;
++        }
++
++        public void setCapacity(int capacity) {
++            if (capacity < 0) {
++                throw new IllegalArgumentException("Capacity cannot be negative");
++            }
++            this.capacity = capacity;
++        }
++
+         @Override
+         public String toString() {
+             return String.format("Node[id=%s, ip=%s, capacity=%d]", nodeId, ipAddress, capacity);
+-- 
+2.43.0
+
