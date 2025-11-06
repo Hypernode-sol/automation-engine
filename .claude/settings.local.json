@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/optim/OneDrive/Documentos/GitHub/hypernode-llm-deployer/**)",
+      "Read(//c/Users/optim/OneDrive/Documentos/GitHub/Hypernode-Site-App/**)",
+      "Read(//c/Users/optim/OneDrive/Documentos/GitHub/hypernode-core-protocol/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
